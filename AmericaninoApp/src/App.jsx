@@ -6,6 +6,7 @@ import { defaultProducts } from './data/products';
 import './App.css';
 
 const storageKey = 'americanino-react-cart';
+const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
 const categories = ['Todos', 'Mujer', 'Hombre', 'Accesorios', 'Lluvia', 'Sale'];
 
 const money = new Intl.NumberFormat('es-CO', {
@@ -15,7 +16,7 @@ const money = new Intl.NumberFormat('es-CO', {
 });
 
 function App() {
-  const [products] = useState(defaultProducts);
+  const [products, setProducts] = useState(defaultProducts);
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -28,6 +29,16 @@ function App() {
     }
   });
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    fetch(`${apiUrl}/products`)
+      .then((response) => {
+        if (!response.ok) throw new Error('No se pudo cargar el catálogo');
+        return response.json();
+      })
+      .then(({ products: remoteProducts }) => setProducts(remoteProducts))
+      .catch(() => setToast('Catálogo local cargado'));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(cart));
@@ -101,9 +112,20 @@ function App() {
     setCart((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const checkout = () => {
-    setCart([]);
-    setToast('Pedido confirmado · Modo demostración');
+  const checkout = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: cart }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      setCart([]);
+      setToast(`Pedido ${result.orderNumber} confirmado`);
+    } catch (error) {
+      setToast(error.message || 'No se pudo confirmar el pedido');
+    }
   };
 
   const handleCategorySelect = (category) => {
