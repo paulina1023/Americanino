@@ -1,5 +1,9 @@
 import express from 'express';
 import cors from 'cors';
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT) || 4001;
@@ -7,107 +11,165 @@ const port = Number(process.env.PORT) || 4001;
 app.use(cors());
 app.use(express.json());
 
-const products = [
-  {
-    id: 'denim-clara',
-    name: 'Chaqueta Denim Clara',
-    price: 229900,
-    category: 'Mujer',
-    image:
-      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=700&q=85',
-    badge: 'Nuevo',
-  },
-  {
-    id: 'camisa-esencial',
-    name: 'Camisa Esencial',
-    price: 149900,
-    category: 'Hombre',
-    image:
-      'https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?auto=format&fit=crop&w=700&q=85',
-  },
-  {
-    id: 'vestido-midi',
-    name: 'Vestido Midi Negro',
-    price: 219900,
-    category: 'Mujer',
-    image:
-      'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=700&q=85',
-    badge: '-30%',
-    oldPrice: 219900,
-  },
-  {
-    id: 'cargo-verde',
-    name: 'Pantalón Cargo Verde',
-    price: 199900,
-    category: 'Mujer',
-    image:
-      'https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?auto=format&fit=crop&w=700&q=85',
-  },
-  {
-    id: 'top-punto',
-    name: 'Top Punto Blanco',
-    price: 99900,
-    category: 'Mujer',
-    image:
-      'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=700&q=85',
-  },
-  {
-    id: 'blazer-beige',
-    name: 'Blazer Textura Beige',
-    price: 299900,
-    category: 'Hombre',
-    image:
-      'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=700&q=85',
-  },
-  {
-    id: 'gafas-01',
-    name: 'Gafas Solar 01',
-    price: 129900,
-    category: 'Accesorios',
-    image:
-      'https://images.unsplash.com/photo-1577803947579-9f7a3d5c5a32?auto=format&fit=crop&w=700&q=85',
-  },
-  {
-    id: 'collar-dorado',
-    name: 'Collar Cadena Dorado',
-    price: 89900,
-    category: 'Accesorios',
-    image:
-      'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=700&q=85',
-  },
-];
-
-app.get('/api/products', (_req, res) => {
-  res.json({ products });
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'americanino_db',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
 
-app.get('/api/products/:id', (req, res) => {
-  const product = products.find((item) => item.id === req.params.id);
+async function ensureDatabase() {
+  try {
+    const connection = await pool.getConnection();
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        slug VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        old_price DECIMAL(10,2) DEFAULT NULL,
+        badge VARCHAR(50) DEFAULT NULL,
+        image VARCHAR(500) NOT NULL
+      ) ENGINE=InnoDB;
+    `);
 
-  if (!product) {
-    return res.status(404).json({ message: 'Producto no encontrado' });
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_number VARCHAR(50) UNIQUE NOT NULL,
+        total DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        product_id INT NOT NULL,
+        quantity INT NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB;
+    `);
+
+    const [rows] = await connection.query('SELECT COUNT(*) AS total FROM products');
+    if (rows[0].total === 0) {
+      await connection.query(`
+        INSERT INTO products (slug, name, category, price, old_price, badge, image) VALUES
+        ('denim-clara', 'Chaqueta Denim Clara', 'Mujer', 229900, 269900, 'Nuevo', 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=700&q=85'),
+        ('vestido-midi', 'Vestido Midi Negro', 'Mujer', 153930, 219900, '-30%', 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=700&q=85'),
+        ('cargo-verde', 'Pantalón Cargo Verde', 'Mujer', 199900, NULL, NULL, 'https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?auto=format&fit=crop&w=700&q=85'),
+        ('top-punto', 'Top Punto Blanco', 'Mujer', 99900, NULL, NULL, 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=700&q=85'),
+        ('camisa-esencial', 'Camisa Esencial', 'Hombre', 149900, NULL, NULL, 'https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?auto=format&fit=crop&w=700&q=85'),
+        ('blazer-beige', 'Blazer Textura Beige', 'Hombre', 299900, NULL, 'Premium', 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=700&q=85'),
+        ('gafas-01', 'Gafas Solar 01', 'Accesorios', 129900, NULL, NULL, 'https://images.unsplash.com/photo-1577803947579-9f7a3d5c5a32?auto=format&fit=crop&w=700&q=85'),
+        ('collar-dorado', 'Collar Cadena Dorado', 'Accesorios', 89900, NULL, NULL, 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=700&q=85'),
+        ('chaqueta-utility', 'Chaqueta Utility Negra', 'Lluvia', 279900, NULL, NULL, 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=700&q=85'),
+        ('polo-essential', 'Polo Essential Verde', 'Sale', 119900, 179900, 'Sale', 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=700&q=85');
+      `);
+    }
+
+    connection.release();
+  } catch (error) {
+    console.error('Database initialization error:', error.message);
   }
+}
 
-  return res.json({ product });
+app.get('/api/products', async (_req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM products ORDER BY id DESC');
+    res.json({ products: rows.map((product) => ({
+      id: product.slug,
+      name: product.name,
+      category: product.category,
+      price: Number(product.price),
+      oldPrice: product.old_price ? Number(product.old_price) : null,
+      image: product.image,
+      badge: product.badge,
+    })) });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al consultar productos', error: error.message });
+  }
 });
 
-app.post('/api/orders', (req, res) => {
+app.get('/api/products/:id', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM products WHERE slug = ?', [req.params.id]);
+    const product = rows[0];
+
+    if (!product) {
+      return res.status(404).json({ message: 'Producto no encontrado' });
+    }
+
+    return res.json({
+      product: {
+        id: product.slug,
+        name: product.name,
+        category: product.category,
+        price: Number(product.price),
+        oldPrice: product.old_price ? Number(product.old_price) : null,
+        image: product.image,
+        badge: product.badge,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al consultar producto', error: error.message });
+  }
+});
+
+app.post('/api/orders', async (req, res) => {
   const { items = [] } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Debes agregar productos antes de confirmar el pedido' });
   }
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const orderNumber = `AM-${Date.now().toString().slice(-6)}`;
+  try {
+    const total = items.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+    const orderNumber = `AM-${Date.now().toString().slice(-6)}`;
 
-  return res.json({
-    success: true,
-    orderNumber,
-    total,
-    message: 'Pedido confirmado en modo demostración',
-  });
+    const [result] = await pool.query(
+      'INSERT INTO orders (order_number, total) VALUES (?, ?)',
+      [orderNumber, total],
+    );
+
+    for (const item of items) {
+      const [productRow] = await pool.query('SELECT id FROM products WHERE slug = ?', [item.id]);
+      if (productRow[0]) {
+        await pool.query(
+          'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
+          [result.insertId, productRow[0].id, item.quantity, item.price],
+        );
+      }
+    }
+
+    return res.json({
+      success: true,
+      orderNumber,
+      total,
+      message: 'Pedido confirmado en modo demostración',
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al guardar el pedido', error: error.message });
+  }
 });
+
+app.get('/api/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', database: 'connected' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+await ensureDatabase();
 
 app.listen(port, () => {
   console.log(`Americanino API running on http://localhost:${port}`);
