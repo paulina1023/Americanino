@@ -1,5 +1,17 @@
 # React + Vite
 
+## Backend con MySQL
+
+1. Importa `database/schema.sql` en phpMyAdmin o con el cliente MySQL.
+2. Copia `server/.env.example` como `server/.env` y configura las credenciales.
+3. Instala con `npm install` y `npm --prefix server install`.
+4. Inicia cliente y API con `npm run dev`.
+
+También puedes crearla desde PHP con `DB_USER=root DB_PASSWORD=tu_clave php database/setup.php`.
+Ese comando requiere la extensión `pdo_mysql` habilitada.
+
+La API queda disponible en `http://localhost:4001`. El catálogo se carga desde `GET /api/products` y el checkout persiste pedidos en `orders` y `order_items`.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:
