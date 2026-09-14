@@ -74,13 +74,12 @@ async function ensureDatabase() {
         ('polo-essential', 'Polo Essential Verde', 'Sale', 119900, 179900, 'Sale', 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=700&q=85');
       `);
     }
-
-    connection.release();
   } catch (error) {
-    console.error('Database initialization error:', error.message);
-  }
-}
-
+    console.error('Error: MySQL no está disponible:', error.message);
+    throw new Error(
+      'No se pudo conectar con MySQL. Verifica que el servidor de base de datos esté disponible.'
+    );
+  }}
 app.get('/api/products', async (_req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM products ORDER BY id DESC');
@@ -169,8 +168,9 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
-await ensureDatabase();
+await function ensureDatabase(){
 
 app.listen(port, () => {
   console.log(`Americanino API running on http://localhost:${port}`);
 });
+}
